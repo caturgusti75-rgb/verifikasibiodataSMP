@@ -1,0 +1,650 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root{--navy:#17365d;--blue:#2463a6;--bg:#f3f6fa;--ink:#1e293b;--muted:#64748b;--line:#dbe3ee;--green:#16834a;--red:#b42318}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font:15px Arial,sans-serif;color:var(--ink)}
+    header{background:linear-gradient(120deg,#102b4c,#245d91);color:white;padding:22px 18px}
+    header .wrap,main{max-width:1100px;margin:auto}
+    h1{font-size:22px;margin:0 0 6px}
+    header p{margin:0;color:#dbeafe}
+    main{padding:20px 14px 48px}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    button,.btn{border:0;border-radius:9px;padding:11px 15px;background:var(--blue);color:white;font-weight:600;cursor:pointer}
+    button.secondary{background:#e6edf5;color:#17365d}
+    button.danger{background:#b42318}
+    .panel,.card{background:white;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 3px 12px #17365d0a}
+    .hidden{display:none!important}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    label{display:block;font-size:13px;font-weight:700;margin:12px 0 6px;color:#334155}
+    input,select,textarea{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:white}
+    textarea{min-height:85px;resize:vertical}
+    .muted{color:var(--muted);font-size:13px}
+    .notice{padding:12px;border-radius:9px;background:#eff6ff;color:#1e40af;margin:12px 0}
+    .error{background:#fef2f2;color:var(--red)}
+    .success{background:#ecfdf3;color:#067647}
+    .stat{font-size:28px;font-weight:700;margin-top:5px}
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;min-width:650px}
+    th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px;vertical-align:top}
+    th{background:#f8fafc}
+    .row-actions{display:flex;gap:7px;flex-wrap:wrap}
+    .status{display:inline-block;border-radius:99px;padding:4px 9px;background:#fff7ed;color:#9a3412;font-size:12px}
+    .status.ok{background:#ecfdf3;color:#067647}
+    .field-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+
+    .occupation-note{margin-top:9px;padding:12px;border:1px solid #bfdbfe;border-radius:9px;background:#f8fbff;color:#17365d;font-size:12px;line-height:1.5}
+    .occupation-note h4{margin:0 0 7px;font-size:13px;color:#17365d}
+    .occupation-note ol{margin:0;padding-left:22px;columns:2;column-gap:18px}
+    .occupation-note li{padding:1px 0;break-inside:avoid}
+    .occupation-note .note-warning{margin-top:8px;padding:8px;border-radius:7px;background:#fff3d6;color:#854d0e}
+
+    .login-logo{display:flex;justify-content:center;align-items:center;margin:2px auto 14px}
+    .login-logo img{display:block;width:125px;height:125px;object-fit:contain}
+    .login-panel h2{text-align:center;margin-top:4px}
+
+    @media(max-width:600px){
+      .occupation-note ol{columns:1}
+      header{padding:18px 14px}
+      h1{font-size:19px}
+      .panel{padding:14px}
+      .login-logo img{width:110px;height:110px}
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="wrap">
+    <h1 id="schoolName">Verifikasi Biodata Siswa</h1>
+    <p id="schoolYear">Tahun Pelajaran 2026/2027</p>
+  </div>
+</header>
+
+<main>
+  <div class="tabs">
+    <button id="parentTab" onclick="showView('parent')">Orang Tua</button>
+    <button class="secondary" id="adminTab" onclick="showView('admin')">Admin</button>
+  </div>
+
+  <section id="parentView">
+    <div id="parentLogin" class="panel login-panel">
+      <div class="login-logo">
+        <img class="school-logo-image" alt="Logo SMP Bhakti Pertiwi">
+      </div>
+
+      <h2>Login Orang Tua</h2>
+      <p class="muted">Masukkan nama siswa dan kelas sesuai database sekolah.</p>
+
+      <label>Nama lengkap siswa</label>
+      <input id="loginName" autocomplete="name" placeholder="Nama lengkap siswa">
+
+      <label>Kelas</label>
+      <input id="loginClass" placeholder="Contoh: 6A">
+
+      <div class="field-actions">
+        <button onclick="doParentLogin()">Masuk</button>
+      </div>
+      <div id="parentLoginMsg"></div>
+    </div>
+
+    <div id="parentForm" class="panel hidden">
+      <div class="row-actions" style="justify-content:space-between;align-items:center">
+        <h2>Periksa Biodata Siswa</h2>
+        <button class="secondary" onclick="parentLogout()">Keluar</button>
+      </div>
+
+      <div id="parentStatus" class="notice"></div>
+      <div class="grid" id="parentFields"></div>
+
+      <div class="field-actions">
+        <button onclick="saveParent()">Simpan dan Konfirmasi</button>
+      </div>
+      <div id="parentSaveMsg"></div>
+    </div>
+  </section>
+
+  <section id="adminView" class="hidden">
+    <div id="adminLogin" class="panel login-panel">
+      <div class="login-logo">
+        <img class="school-logo-image" alt="Logo SMP Bhakti Pertiwi">
+      </div>
+
+      <h2>Login Administrator</h2>
+
+      <label>Username</label>
+      <input id="adminUser" autocomplete="username">
+
+      <label>Password</label>
+      <input id="adminPass" type="password" autocomplete="current-password">
+
+      <div class="field-actions">
+        <button onclick="doAdminLogin()">Masuk Admin</button>
+      </div>
+      <div id="adminLoginMsg"></div>
+    </div>
+
+    <div id="adminPanel" class="hidden">
+      <div class="tabs">
+        <button onclick="loadDashboard()">Dashboard</button>
+        <button class="secondary" onclick="loadStudents()">Data Siswa</button>
+        <button class="secondary" onclick="loadCorrections()">Riwayat Koreksi</button>
+        <button class="secondary" onclick="loadRefs()">Referensi</button>
+        <button class="secondary" onclick="loadSettings()">Pengaturan</button>
+        <button class="secondary" onclick="loadLogs()">Log Aktivitas</button>
+        <button class="secondary" onclick="makeBackup()">Backup</button>
+        <button class="danger" onclick="adminLogout()">Keluar</button>
+      </div>
+
+      <div id="adminContent" class="panel">
+        <p class="muted">Pilih menu admin.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const SCHOOL_LOGO_DATA = 'data:image/png;base64,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';
+
+document.querySelectorAll(".school-logo-image").forEach(img => {
+  img.src = SCHOOL_LOGO_DATA;
+});
+
+let parentToken='', adminToken='', parentRefs={}, currentStudent=null;
+
+const parentFields=[
+ ['NAMA_SISWA','Nama lengkap siswa','text'],
+ ['AGAMA','Agama','select'],
+ ['ASAL_SEKOLAH','Asal sekolah sebelumnya','text'],
+ ['ANAK_KE','Anak ke-','number'],
+ ['ALAMAT','Alamat lengkap','textarea'],
+ ['STATUS_KELUARGA','Status dalam keluarga','select'],
+ ['NAMA_AYAH','Nama ayah','text'],
+ ['NAMA_IBU','Nama ibu','text'],
+ ['PEKERJAAN_AYAH','Pekerjaan ayah','text'],
+ ['PEKERJAAN_IBU','Pekerjaan ibu','text']
+];
+
+function call(fn,...args){
+  return new Promise((resolve,reject)=>{
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(e=>reject(new Error(e.message||e)))[fn](...args)
+  });
+}
+
+function msg(id,text,type='notice'){
+  const el=document.getElementById(id);
+  el.className='notice '+(type==='error'?'error':type==='success'?'success':'');
+  el.textContent=text;
+}
+
+function showView(v){
+  document.getElementById('parentView').classList.toggle('hidden',v!=='parent');
+  document.getElementById('adminView').classList.toggle('hidden',v!=='admin');
+  document.getElementById('parentTab').className=v==='parent'?'':'secondary';
+  document.getElementById('adminTab').className=v==='admin'?'':'secondary';
+}
+
+async function init(){
+  try{
+    const x=await call('getAppInfo');
+    document.getElementById('schoolName').textContent=x.school;
+    document.getElementById('schoolYear').textContent='Tahun Pelajaran '+x.year;
+    if(x.status!=='AKTIF')msg('parentLoginMsg','Layanan sedang tidak aktif.');
+  }catch(e){}
+}
+
+async function doParentLogin(){
+  try{
+    const r=await call(
+      'parentLogin',
+      document.getElementById('loginName').value,
+      document.getElementById('loginClass').value
+    );
+    parentToken=r.token;
+    parentRefs=r.refs||{};
+    currentStudent=r.student;
+    renderParentForm();
+    document.getElementById('parentLogin').classList.add('hidden');
+    document.getElementById('parentForm').classList.remove('hidden');
+  }catch(e){
+    msg('parentLoginMsg',e.message,'error');
+  }
+}
+
+function renderParentForm(){
+  const s=currentStudent;
+  document.getElementById('parentStatus').innerHTML=
+    'Status saat ini: <b>'+esc(s.STATUS_BIODATA||'BELUM_DIKONFIRMASI')+
+    '</b>. Periksa semua informasi sebelum menyimpan.';
+
+  const root=document.getElementById('parentFields');
+  root.innerHTML='';
+
+  parentFields.forEach(([key,label,type])=>{
+    const wrap=document.createElement('div');
+    const lab=document.createElement('label');
+    lab.textContent=label;
+    wrap.appendChild(lab);
+
+    let el;
+    if(type==='textarea'){
+      el=document.createElement('textarea');
+    }else if(type==='select'){
+      el=document.createElement('select');
+      el.appendChild(new Option('-- Pilih --',''));
+      (parentRefs[key]||[]).forEach(v=>el.appendChild(new Option(v,v)));
+    }else{
+      el=document.createElement('input');
+      el.type=type==='number'?'number':'text';
+    }
+
+    el.id='f_'+key;
+    el.value=s[key]??'';
+    if(key==='NAMA_SISWA')el.required=true;
+    wrap.appendChild(el);
+
+    if(key==='PEKERJAAN_AYAH'||key==='PEKERJAAN_IBU'){
+      const note=document.createElement('div');
+      note.className='occupation-note';
+      note.innerHTML=`
+        <h4>KETERANGAN PENGISIAN PEKERJAAN</h4>
+        <ol>
+          <li>WIRASWASTA</li>
+          <li>NELAYAN</li>
+          <li>PETANI</li>
+          <li>PETERNAK</li>
+          <li>PNS/TNI/POLRI</li>
+          <li>KARYAWAN SWASTA</li>
+          <li>PEDAGANG</li>
+          <li>WIRAUSAHA</li>
+          <li>BURUH</li>
+          <li>PENSIUNAN</li>
+          <li>TENAGA KERJA INDONESIA</li>
+          <li>KARYAWAN BUMN</li>
+          <li>LAINNYA</li>
+          <li>SUDAH MENINGGAL</li>
+        </ol>
+        <div class="note-warning">
+          <b>Catatan:</b> Jika Ayah atau Ibu sudah meninggal dunia,
+          tuliskan <b>SUDAH MENINGGAL</b> pada kolom pekerjaan yang bersangkutan.
+        </div>`;
+      wrap.appendChild(note);
+    }
+
+    root.appendChild(wrap);
+  });
+}
+
+async function saveParent(){
+  const payload={};
+  parentFields.forEach(([k])=>{
+    payload[k]=document.getElementById('f_'+k).value;
+  });
+
+  if(!payload.NAMA_SISWA.trim()){
+    msg('parentSaveMsg','Nama siswa wajib diisi.','error');
+    return;
+  }
+
+  try{
+    const r=await call('saveParentBiodata',parentToken,payload);
+    currentStudent=r.student;
+    renderParentForm();
+    msg(
+      'parentSaveMsg',
+      `Berhasil. ${r.changed} data diperbarui. Status biodata: TERVERIFIKASI.`,
+      'success'
+    );
+  }catch(e){
+    msg('parentSaveMsg',e.message,'error');
+  }
+}
+
+function parentLogout(){
+  parentToken='';
+  currentStudent=null;
+  document.getElementById('parentForm').classList.add('hidden');
+  document.getElementById('parentLogin').classList.remove('hidden');
+  document.getElementById('loginName').value='';
+  document.getElementById('loginClass').value='';
+}
+
+async function doAdminLogin(){
+  try{
+    const r=await call(
+      'adminLogin',
+      document.getElementById('adminUser').value,
+      document.getElementById('adminPass').value
+    );
+    adminToken=r.token;
+    document.getElementById('adminLogin').classList.add('hidden');
+    document.getElementById('adminPanel').classList.remove('hidden');
+    loadDashboard();
+  }catch(e){
+    msg('adminLoginMsg',e.message,'error');
+  }
+}
+
+function adminLogout(){
+  adminToken='';
+  document.getElementById('adminPanel').classList.add('hidden');
+  document.getElementById('adminLogin').classList.remove('hidden');
+}
+
+function esc(v){
+  return String(v??'').replace(/[&<>"']/g,c=>({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[c]));
+}
+
+async function loadDashboard(){
+  const c=document.getElementById('adminContent');
+  c.innerHTML='Memuat...';
+
+  try{
+    const d=await call('adminGetDashboard',adminToken);
+    c.innerHTML=`
+      <h2>Dashboard</h2>
+      <div class="grid">
+        <div class="card"><div class="muted">Total siswa</div><div class="stat">${d.total}</div></div>
+        <div class="card"><div class="muted">Terverifikasi</div><div class="stat">${d.verified}</div></div>
+        <div class="card"><div class="muted">Belum konfirmasi</div><div class="stat">${d.pending}</div></div>
+        <div class="card"><div class="muted">Persentase</div><div class="stat">${d.percent}%</div></div>
+      </div>
+      <h3>Rekap per kelas</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Kelas</th><th>Jumlah siswa</th></tr>
+          ${d.byClass.map(x=>`<tr><td>${esc(x.kelas)}</td><td>${x.total}</td></tr>`).join('')}
+        </table>
+      </div>`;
+  }catch(e){
+    c.textContent=e.message;
+  }
+}
+
+async function loadStudents(){
+  const c=document.getElementById('adminContent');
+  c.innerHTML=`
+    <h2>Data Siswa</h2>
+    <div class="grid">
+      <div><label>Cari nama / ID</label><input id="qStudent"></div>
+      <div><label>Kelas</label><input id="qClass" placeholder="Kosongkan untuk semua"></div>
+      <div>
+        <label>Status</label>
+        <select id="qStatus">
+          <option value="">Semua</option>
+          <option>BELUM_DIKONFIRMASI</option>
+          <option>TERVERIFIKASI</option>
+        </select>
+      </div>
+    </div>
+    <p>
+      <button onclick="searchStudents()">Cari</button>
+      <button class="secondary" onclick="studentEditor()">Tambah Siswa</button>
+    </p>
+    <div id="studentResults"></div>`;
+  searchStudents();
+}
+
+async function searchStudents(){
+  const c=document.getElementById('studentResults');
+  c.textContent='Memuat...';
+
+  try{
+    const rows=await call(
+      'adminListStudents',
+      adminToken,
+      document.getElementById('qStudent').value,
+      document.getElementById('qClass').value,
+      document.getElementById('qStatus').value
+    );
+
+    c.innerHTML=`
+      <div class="table-wrap">
+        <table>
+          <tr><th>Nama</th><th>Kelas</th><th>Status</th><th>Aksi</th></tr>
+          ${rows.map(s=>`
+            <tr>
+              <td>${esc(s.NAMA_SISWA)}</td>
+              <td>${esc(s.KELAS)}</td>
+              <td>${esc(s.STATUS_BIODATA)}</td>
+              <td>
+                <button class="secondary" onclick='studentEditor(${JSON.stringify(s).replace(/'/g,"&#39;")})'>Edit</button>
+                <button class="danger" onclick="toggleStudent('${esc(s.ID_SISWA)}','NONAKTIF')">Nonaktifkan</button>
+              </td>
+            </tr>`).join('')}
+        </table>
+      </div>`;
+  }catch(e){
+    c.textContent=e.message;
+  }
+}
+
+async function studentEditor(s={}){
+  const c=document.getElementById('adminContent');
+  let refs={};
+  try{
+    refs=await call('adminGetReferences',adminToken);
+  }catch(e){}
+
+  const fields=[
+    ['NAMA_SISWA','Nama siswa'],
+    ['KELAS','Kelas'],
+    ['AGAMA','Agama'],
+    ['ASAL_SEKOLAH','Asal sekolah'],
+    ['ANAK_KE','Anak ke'],
+    ['ALAMAT','Alamat'],
+    ['STATUS_KELUARGA','Status keluarga'],
+    ['NAMA_AYAH','Nama ayah'],
+    ['NAMA_IBU','Nama ibu'],
+    ['PEKERJAAN_AYAH','Pekerjaan ayah'],
+    ['PEKERJAAN_IBU','Pekerjaan ibu']
+  ];
+
+  c.innerHTML=`
+    <h2>${s.ID_SISWA?'Edit':'Tambah'} Siswa</h2>
+    <input type="hidden" id="editId" value="${esc(s.ID_SISWA||'')}">
+    <div class="grid">
+      ${fields.map(([k,l])=>`
+        <div>
+          <label>${l}</label>
+          ${['AGAMA','STATUS_KELUARGA'].includes(k)?
+            `<select id="e_${k}">
+              <option value="">-- Pilih --</option>
+              ${refs.filter(r=>r[0]===k&&String(r[2]).toUpperCase()==='TRUE')
+                .map(r=>`<option ${s[k]===r[1]?'selected':''}>${esc(r[1])}</option>`).join('')}
+            </select>`:
+            `<input id="e_${k}" value="${esc(s[k]||'')}">`}
+        </div>`).join('')}
+    </div>
+    <p>
+      <button onclick="saveStudent()">Simpan</button>
+      <button class="secondary" onclick="loadStudents()">Kembali</button>
+    </p>`;
+}
+
+async function saveStudent(){
+  const keys=[
+    'NAMA_SISWA','KELAS','AGAMA','ASAL_SEKOLAH','ANAK_KE',
+    'ALAMAT','STATUS_KELUARGA','NAMA_AYAH','NAMA_IBU',
+    'PEKERJAAN_AYAH','PEKERJAAN_IBU'
+  ];
+
+  const p={ID_SISWA:document.getElementById('editId').value};
+  keys.forEach(k=>p[k]=document.getElementById('e_'+k).value);
+
+  try{
+    await call('adminSaveStudent',adminToken,p);
+    loadStudents();
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+async function toggleStudent(id,status){
+  if(!confirm('Nonaktifkan siswa ini? Data tidak dihapus permanen.'))return;
+
+  try{
+    await call('adminSetStudentStatus',adminToken,id,status);
+    searchStudents();
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+async function loadCorrections(){
+  const c=document.getElementById('adminContent');
+  c.innerHTML='Memuat...';
+
+  try{
+    const rows=await call('adminGetCorrections',adminToken,200);
+    c.innerHTML=`
+      <h2>Riwayat Koreksi</h2>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Waktu</th><th>Nama</th><th>Kelas</th><th>Field</th><th>Data lama</th><th>Data baru</th><th>Sumber</th></tr>
+          ${rows.map(r=>`
+            <tr>
+              <td>${esc(r.time)}</td>
+              <td>${esc(r.name)}</td>
+              <td>${esc(r.klass)}</td>
+              <td>${esc(r.field)}</td>
+              <td>${esc(r.oldValue)}</td>
+              <td>${esc(r.newValue)}</td>
+              <td>${esc(r.source)}</td>
+            </tr>`).join('')}
+        </table>
+      </div>`;
+  }catch(e){
+    c.textContent=e.message;
+  }
+}
+
+async function loadRefs(){
+  const c=document.getElementById('adminContent');
+
+  try{
+    const rows=await call('adminGetReferences',adminToken);
+    c.innerHTML=`
+      <h2>Referensi Formulir</h2>
+      <div class="grid">
+        <div>
+          <label>Kategori</label>
+          <select id="refCat">
+            ${['AGAMA','STATUS_KELUARGA','PEKERJAAN_AYAH','PEKERJAAN_IBU'].map(x=>`<option>${x}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Pilihan</label><input id="refChoice"></div>
+        <div><label>Urutan</label><input id="refOrder" type="number" value="99"></div>
+      </div>
+      <p><button onclick="saveRef()">Tambah / Perbarui</button></p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Kategori</th><th>Pilihan</th><th>Aktif</th><th>Urutan</th></tr>
+          ${rows.map(r=>`
+            <tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td></tr>`).join('')}
+        </table>
+      </div>`;
+  }catch(e){
+    c.textContent=e.message;
+  }
+}
+
+async function saveRef(){
+  try{
+    await call(
+      'adminSaveReference',
+      adminToken,
+      document.getElementById('refCat').value,
+      document.getElementById('refChoice').value,
+      true,
+      document.getElementById('refOrder').value
+    );
+    loadRefs();
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+async function loadSettings(){
+  const c=document.getElementById('adminContent');
+
+  try{
+    const rows=await call('adminGetSettings',adminToken);
+    c.innerHTML=`
+      <h2>Pengaturan</h2>
+      ${rows.map(r=>`
+        <div>
+          <label>${esc(r[0])}</label>
+          <input id="set_${esc(r[0])}" value="${esc(r[1])}">
+          <button class="secondary" onclick="saveSetting('${esc(r[0])}')">Simpan</button>
+        </div>`).join('')}`;
+  }catch(e){
+    c.textContent=e.message;
+  }
+}
+
+async function saveSetting(k){
+  try{
+    await call('adminSaveSetting',adminToken,k,document.getElementById('set_'+k).value);
+    alert('Pengaturan disimpan.');
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+async function loadLogs(){
+  const c=document.getElementById('adminContent');
+
+  try{
+    const rows=await call('adminGetLogs',adminToken,200);
+    c.innerHTML=`
+      <h2>Log Aktivitas</h2>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Waktu</th><th>Nama</th><th>Kelas</th><th>Aktivitas</th><th>Keterangan</th><th>Sumber</th></tr>
+          ${rows.map(r=>`
+            <tr>
+              <td>${esc(r[5])}</td>
+              <td>${esc(r[2])}</td>
+              <td>${esc(r[3])}</td>
+              <td>${esc(r[4])}</td>
+              <td>${esc(r[6])}</td>
+              <td>${esc(r[7])}</td>
+            </tr>`).join('')}
+        </table>
+      </div>`;
+  }catch(e){
+    c.textContent=e.message;
+  }
+}
+
+async function makeBackup(){
+  try{
+    const r=await call('adminCreateBackup',adminToken);
+    document.getElementById('adminContent').innerHTML=`
+      <div class="notice success">
+        Backup berhasil dibuat:
+        <a href="${esc(r.url)}" target="_blank">Buka file backup</a>
+      </div>`;
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

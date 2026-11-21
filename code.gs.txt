@@ -1,0 +1,1271 @@
+
+/* =====================================================
+   APLIKASI VERIFIKASI BIODATA SISWA
+   SMP BHAKTI PERTIWI
+   ===================================================== */
+
+const CFG = {
+  SPREADSHEET_ID: '1WI2glpAUettnP0HvEDUU3XcbtjvDIlcCmmjnh06DMK8',
+  SCHOOL: 'SMP Bhakti Pertiwi',
+  TIMEZONE: 'Asia/Jakarta',
+
+  PARENT_SESSION_MINUTES: 25,
+  ADMIN_SESSION_MINUTES: 30,
+
+  BACKUP_FOLDER: 'BACKUP BIODATA SMP BHAKTI PERTIWI',
+
+  SHEETS: {
+    STUDENTS: 'DATA_SISWA',
+    CORRECTIONS: 'PENGAJUAN_KOREKSI',
+    LOGS: 'LOG_AKTIVITAS',
+    SETTINGS: 'PENGATURAN',
+    ADMINS: 'AKUN_ADMIN',
+    ARCHIVE: 'ARSIP_DATA'
+  },
+
+  STUDENT_HEADERS: [
+    'ID_SISWA',
+    'NO',
+    'NISN',
+    'NAMA_SISWA',
+    'TEMPAT_LAHIR',
+    'TANGGAL_LAHIR',
+    'AGAMA',
+    'ALAMAT',
+    'NAMA_AYAH',
+    'PEKERJAAN_AYAH',
+    'NAMA_IBU',
+    'PEKERJAAN_IBU',
+    'SEKOLAH_ASAL',
+    'ANAK_KE',
+    'STATUS_BIODATA',
+    'TANGGAL_KONFIRMASI',
+    'TANGGAL_UPDATE',
+    'STATUS_SISWA'
+  ],
+
+  PARENT_FIELDS: [
+    'TEMPAT_LAHIR',
+    'TANGGAL_LAHIR',
+    'AGAMA',
+    'ALAMAT',
+    'NAMA_AYAH',
+    'PEKERJAAN_AYAH',
+    'NAMA_IBU',
+    'PEKERJAAN_IBU',
+    'SEKOLAH_ASAL',
+    'ANAK_KE'
+  ],
+
+  REQUIRED_FIELDS: [
+    'NISN',
+    'NAMA_SISWA',
+    'TEMPAT_LAHIR',
+    'TANGGAL_LAHIR',
+    'AGAMA',
+    'ALAMAT',
+    'NAMA_AYAH',
+    'NAMA_IBU',
+    'SEKOLAH_ASAL',
+    'ANAK_KE'
+  ]
+};
+
+
+/* =====================================================
+   WEB APP
+   ===================================================== */
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Verifikasi Biodata - SMP Bhakti Pertiwi')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function getSystemInfo() {
+  return {
+    school: CFG.SCHOOL,
+    appName: 'Verifikasi Biodata Siswa',
+    year: getSetting_('TAHUN_PELAJARAN') || '2026/2027'
+  };
+}
+
+
+/* =====================================================
+   DATABASE
+   ===================================================== */
+
+function db_() {
+  return SpreadsheetApp.openById(CFG.SPREADSHEET_ID);
+}
+
+function sheet_(name) {
+  const sh = db_().getSheetByName(name);
+
+  if (!sh) {
+    throw new Error('Sheet tidak ditemukan: ' + name);
+  }
+
+  return sh;
+}
+
+function headers_(sh) {
+  return sh.getRange(1, 1, 1, sh.getLastColumn())
+    .getDisplayValues()[0];
+}
+
+function records_(name) {
+  const sh = sheet_(name);
+  const values = sh.getDataRange().getValues();
+
+  if (values.length < 2) return [];
+
+  const headers = values.shift();
+
+  return values
+    .filter(row => row.some(v => v !== '' && v !== null))
+    .map(row => {
+      const obj = {};
+
+      headers.forEach((h, i) => {
+        obj[h] = row[i];
+      });
+
+      return obj;
+    });
+}
+
+function findStudent_(nisn) {
+  const sh = sheet_(CFG.SHEETS.STUDENTS);
+  const values = sh.getDataRange().getDisplayValues();
+  const headers = values[0];
+  const ix = headers.indexOf('NISN');
+
+  if (ix < 0) {
+    throw new Error('Kolom NISN tidak ditemukan.');
+  }
+
+  for (let r = 1; r < values.length; r++) {
+    if (String(values[r][ix]).trim() === String(nisn).trim()) {
+      const obj = {};
+
+      headers.forEach((h, i) => {
+        obj[h] = values[r][i];
+      });
+
+      return {
+        row: r + 1,
+        data: obj
+      };
+    }
+  }
+
+  return null;
+}
+
+function findStudentById_(id) {
+  const sh = sheet_(CFG.SHEETS.STUDENTS);
+  const values = sh.getDataRange().getDisplayValues();
+  const headers = values[0];
+  const ix = headers.indexOf('ID_SISWA');
+
+  if (ix < 0) {
+    throw new Error('Kolom ID_SISWA tidak ditemukan.');
+  }
+
+  for (let r = 1; r < values.length; r++) {
+    if (String(values[r][ix]) === String(id)) {
+      const obj = {};
+
+      headers.forEach((h, i) => {
+        obj[h] = values[r][i];
+      });
+
+      return {
+        row: r + 1,
+        data: obj
+      };
+    }
+  }
+
+  return null;
+}
+
+function updateRow_(sh, row, obj) {
+  const headers = headers_(sh);
+
+  headers.forEach((h, i) => {
+    if (Object.prototype.hasOwnProperty.call(obj, h)) {
+      sh.getRange(row, i + 1).setValue(obj[h]);
+    }
+  });
+}
+
+function dateText_(value) {
+  if (!value) return '';
+
+  if (value instanceof Date) {
+    return Utilities.formatDate(
+      value,
+      CFG.TIMEZONE,
+      'yyyy-MM-dd'
+    );
+  }
+
+  return String(value);
+}
+
+function now_() {
+  return new Date();
+}
+
+function id_(prefix) {
+  return prefix + '-' +
+    Utilities.getUuid().slice(0, 8).toUpperCase();
+}
+
+
+/* =====================================================
+   SESSION
+   ===================================================== */
+
+function createSession_(type, user) {
+  const token = Utilities.getUuid() + Utilities.getUuid();
+
+  const minutes = type === 'ADMIN'
+    ? CFG.ADMIN_SESSION_MINUTES
+    : CFG.PARENT_SESSION_MINUTES;
+
+  CacheService.getScriptCache().put(
+    'SESSION_' + token,
+    JSON.stringify({
+      type: type,
+      user: user,
+      last: Date.now()
+    }),
+    minutes * 60
+  );
+
+  return token;
+}
+
+function session_(token, expectedType) {
+  if (!token) {
+    throw new Error('Sesi tidak ditemukan. Silakan login kembali.');
+  }
+
+  const cache = CacheService.getScriptCache();
+  const key = 'SESSION_' + token;
+  const raw = cache.get(key);
+
+  if (!raw) {
+    throw new Error('Sesi telah berakhir. Silakan login kembali.');
+  }
+
+  const s = JSON.parse(raw);
+
+  if (s.type !== expectedType) {
+    throw new Error('Akses tidak diizinkan.');
+  }
+
+  const minutes = expectedType === 'ADMIN'
+    ? CFG.ADMIN_SESSION_MINUTES
+    : CFG.PARENT_SESSION_MINUTES;
+
+  if (Date.now() - s.last > minutes * 60000) {
+    cache.remove(key);
+    throw new Error('Sesi telah berakhir. Silakan login kembali.');
+  }
+
+  s.last = Date.now();
+
+  cache.put(
+    key,
+    JSON.stringify(s),
+    minutes * 60
+  );
+
+  return s;
+}
+
+function logout(token) {
+  if (token) {
+    CacheService.getScriptCache()
+      .remove('SESSION_' + token);
+  }
+
+  return { success: true };
+}
+
+
+/* =====================================================
+   LOGIN ORANG TUA
+   ===================================================== */
+
+function loginParent(nisn) {
+  nisn = String(nisn || '').trim();
+
+  if (!nisn) {
+    throw new Error('Masukkan NISN.');
+  }
+
+  const found = findStudent_(nisn);
+
+  if (!found) {
+    throw new Error('NISN tidak ditemukan.');
+  }
+
+  if (
+    String(found.data.STATUS_SISWA).toUpperCase() !== 'AKTIF'
+  ) {
+    throw new Error('Status siswa tidak aktif.');
+  }
+
+  const token = createSession_('PARENT', {
+    id: found.data.ID_SISWA,
+    nisn: nisn
+  });
+
+  logActivity_(
+    found.data,
+    'LOGIN ORANG TUA',
+    'Orang tua masuk ke aplikasi',
+    'ORANG TUA'
+  );
+
+  return {
+    success: true,
+    token: token
+  };
+}
+
+function getParentBiodata(token) {
+  const s = session_(token, 'PARENT');
+  const found = findStudent_(s.user.nisn);
+
+  if (!found) {
+    throw new Error('Data siswa tidak ditemukan.');
+  }
+
+  const data = Object.assign({}, found.data);
+
+  data.TANGGAL_LAHIR = dateText_(data.TANGGAL_LAHIR);
+  data.TANGGAL_KONFIRMASI = dateText_(data.TANGGAL_KONFIRMASI);
+  data.TANGGAL_UPDATE = dateText_(data.TANGGAL_UPDATE);
+
+  return data;
+}
+
+function saveParentBiodata(token, data) {
+  const s = session_(token, 'PARENT');
+
+  if (!data || typeof data !== 'object') {
+    throw new Error('Data tidak valid.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const found = findStudent_(s.user.nisn);
+
+    if (!found) {
+      throw new Error('Data siswa tidak ditemukan.');
+    }
+
+    const old = found.data;
+    const changes = [];
+
+    CFG.PARENT_FIELDS.forEach(field => {
+      if (!Object.prototype.hasOwnProperty.call(data, field)) {
+        return;
+      }
+
+      let value = data[field];
+
+      if (field === 'ANAK_KE') {
+        if (
+          value === '' ||
+          value === null ||
+          !Number.isInteger(Number(value)) ||
+          Number(value) < 0
+        ) {
+          throw new Error('Anak ke harus berupa angka 0 atau lebih.');
+        }
+
+        value = Number(value);
+      } else {
+        value = String(value == null ? '' : value).trim();
+      }
+
+      const oldValue = field === 'TANGGAL_LAHIR'
+        ? dateText_(old[field])
+        : String(old[field] == null ? '' : old[field]);
+
+      if (String(value) !== oldValue) {
+        changes.push({
+          field: field,
+          oldValue: oldValue,
+          newValue: value
+        });
+      }
+    });
+
+    if (!changes.length) {
+      return {
+        success: true,
+        changed: false,
+        message: 'Tidak ada perubahan data.'
+      };
+    }
+
+    const update = {
+      STATUS_BIODATA: 'PERLU VERIFIKASI',
+      TANGGAL_KONFIRMASI: '',
+      TANGGAL_UPDATE: now_()
+    };
+
+    changes.forEach(c => {
+      update[c.field] = c.newValue;
+    });
+
+    updateRow_(
+      sheet_(CFG.SHEETS.STUDENTS),
+      found.row,
+      update
+    );
+
+    changes.forEach(c => {
+      appendCorrection_(
+        old,
+        c.field,
+        c.oldValue,
+        c.newValue,
+        'ORANG TUA',
+        'Perubahan biodata'
+      );
+    });
+
+    logActivity_(
+      old,
+      'UBAH BIODATA',
+      changes.map(c => c.field).join(', '),
+      'ORANG TUA'
+    );
+
+    return {
+      success: true,
+      changed: true,
+      message: 'Perubahan biodata berhasil disimpan.'
+    };
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function confirmParentBiodata(token) {
+  const s = session_(token, 'PARENT');
+  const found = findStudent_(s.user.nisn);
+
+  if (!found) {
+    throw new Error('Data siswa tidak ditemukan.');
+  }
+
+  const d = found.data;
+
+  const missing = CFG.REQUIRED_FIELDS.filter(field => {
+    const value = d[field];
+
+    return value === '' ||
+      value === null ||
+      value === undefined;
+  });
+
+  if (missing.length) {
+    throw new Error(
+      'Lengkapi data berikut: ' + missing.join(', ')
+    );
+  }
+
+  const stamp = now_();
+
+  updateRow_(
+    sheet_(CFG.SHEETS.STUDENTS),
+    found.row,
+    {
+      STATUS_BIODATA: 'TERVERIFIKASI',
+      TANGGAL_KONFIRMASI: stamp,
+      TANGGAL_UPDATE: stamp
+    }
+  );
+
+  logActivity_(
+    d,
+    'KONFIRMASI BIODATA',
+    'Biodata dikonfirmasi orang tua',
+    'ORANG TUA'
+  );
+
+  return {
+    success: true,
+    name: d.NAMA_SISWA,
+    nisn: d.NISN,
+    status: 'TERVERIFIKASI',
+    date: Utilities.formatDate(
+      stamp,
+      CFG.TIMEZONE,
+      'dd-MM-yyyy HH:mm:ss'
+    )
+  };
+}
+
+
+/* =====================================================
+   PASSWORD ADMIN
+   ===================================================== */
+
+function hashPassword_(password) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(password),
+    Utilities.Charset.UTF_8
+  );
+
+  return Utilities.base64Encode(bytes);
+}
+
+/*
+  JALANKAN FUNGSI INI SATU KALI DARI EDITOR APPS SCRIPT.
+
+  Setelah berhasil:
+  1. Hapus fungsi setupAdminPassword ini.
+  2. Simpan project.
+  3. Login menggunakan AdminSMP.
+*/
+
+function setupAdminPassword() {
+  const password = 'Smpbhaktipertiwi2012';
+
+  const sh = sheet_(CFG.SHEETS.ADMINS);
+  const values = sh.getDataRange().getValues();
+  const headers = values[0];
+
+  const userIx = headers.indexOf('USERNAME');
+  const hashIx = headers.indexOf('PASSWORD_HASH');
+  const statusIx = headers.indexOf('STATUS_AKUN');
+
+  if (userIx === -1 || hashIx === -1 || statusIx === -1) {
+    throw new Error(
+      'Kolom USERNAME, PASSWORD_HASH, atau STATUS_AKUN tidak ditemukan.'
+    );
+  }
+
+  for (let r = 1; r < values.length; r++) {
+    if (
+      String(values[r][userIx]).trim() === 'AdminSMP'
+    ) {
+      sh.getRange(r + 1, hashIx + 1)
+        .setValue(hashPassword_(password));
+
+      sh.getRange(r + 1, statusIx + 1)
+        .setValue('AKTIF');
+
+      return 'Password admin berhasil disimpan.';
+    }
+  }
+
+  throw new Error('Akun AdminSMP tidak ditemukan.');
+}
+
+function loginAdmin(username, password) {
+  username = String(username || '').trim();
+  password = String(password || '');
+
+  if (!username || !password) {
+    throw new Error('Username dan password wajib diisi.');
+  }
+
+  const sh = sheet_(CFG.SHEETS.ADMINS);
+  const values = sh.getDataRange().getValues();
+  const headers = values[0];
+  const ix = {};
+
+  headers.forEach((h, i) => {
+    ix[h] = i;
+  });
+
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+
+    if (String(row[ix.USERNAME]).trim() !== username) {
+      continue;
+    }
+
+    if (String(row[ix.STATUS_AKUN]).toUpperCase() !== 'AKTIF') {
+      throw new Error('Akun admin tidak aktif.');
+    }
+
+    const stored = String(row[ix.PASSWORD_HASH] || '');
+
+    if (!stored || stored !== hashPassword_(password)) {
+      throw new Error('Username atau password salah.');
+    }
+
+    sh.getRange(r + 1, ix.LOGIN_TERAKHIR + 1)
+      .setValue(now_());
+
+    const token = createSession_('ADMIN', {
+      username: username,
+      name: row[ix.NAMA_ADMIN] || username,
+      role: row[ix.ROLE] || 'ADMIN'
+    });
+
+    logActivity_(
+      null,
+      'LOGIN ADMIN',
+      username + ' masuk ke aplikasi',
+      'ADMIN'
+    );
+
+    return {
+      success: true,
+      token: token,
+      name: row[ix.NAMA_ADMIN] || username
+    };
+  }
+
+  throw new Error('Username atau password salah.');
+}
+
+
+/* =====================================================
+   DASHBOARD ADMIN
+   ===================================================== */
+
+function getAdminDashboard(token) {
+  session_(token, 'ADMIN');
+
+  const students = records_(CFG.SHEETS.STUDENTS);
+
+  const active = students.filter(s =>
+    String(s.STATUS_SISWA).toUpperCase() === 'AKTIF'
+  );
+
+  const inactive = students.length - active.length;
+
+  return {
+    total: students.length,
+    active: active.length,
+    inactive: inactive,
+
+    verified: students.filter(s =>
+      s.STATUS_BIODATA === 'TERVERIFIKASI'
+    ).length,
+
+    unverified: students.filter(s =>
+      s.STATUS_BIODATA === 'BELUM TERVERIFIKASI'
+    ).length,
+
+    needsVerification: students.filter(s =>
+      s.STATUS_BIODATA === 'PERLU VERIFIKASI' ||
+      !s.STATUS_BIODATA
+    ).length
+  };
+}
+
+function getAdminStudents(token) {
+  session_(token, 'ADMIN');
+
+  return records_(CFG.SHEETS.STUDENTS).map(s => {
+    s.TANGGAL_LAHIR = dateText_(s.TANGGAL_LAHIR);
+    s.TANGGAL_KONFIRMASI = dateText_(s.TANGGAL_KONFIRMASI);
+    s.TANGGAL_UPDATE = dateText_(s.TANGGAL_UPDATE);
+
+    return s;
+  });
+}
+
+
+/* =====================================================
+   TAMBAH DAN EDIT SISWA
+   ===================================================== */
+
+function updateStudentAdmin(token, id, data) {
+  session_(token, 'ADMIN');
+
+  const found = findStudentById_(id);
+
+  if (!found) {
+    throw new Error('Siswa tidak ditemukan.');
+  }
+
+  const old = found.data;
+  const changes = [];
+
+  CFG.STUDENT_HEADERS.forEach(field => {
+    if (!Object.prototype.hasOwnProperty.call(data, field)) {
+      return;
+    }
+
+    if (field === 'ID_SISWA') return;
+
+    let value = data[field];
+
+    if (field === 'ANAK_KE') {
+      if (
+        value !== '' &&
+        (!Number.isInteger(Number(value)) || Number(value) < 0)
+      ) {
+        throw new Error('Anak ke harus berupa angka 0 atau lebih.');
+      }
+
+      value = value === '' ? '' : Number(value);
+    }
+
+    const oldValue = String(old[field] == null ? '' : old[field]);
+
+    if (String(value) !== oldValue) {
+      changes.push({
+        field: field,
+        oldValue: oldValue,
+        newValue: value
+      });
+    }
+  });
+
+  if (!changes.length) {
+    return { success: true, changed: false };
+  }
+
+  const update = {
+    TANGGAL_UPDATE: now_()
+  };
+
+  changes.forEach(c => {
+    update[c.field] = c.newValue;
+  });
+
+  updateRow_(
+    sheet_(CFG.SHEETS.STUDENTS),
+    found.row,
+    update
+  );
+
+  changes.forEach(c => {
+    appendCorrection_(
+      old,
+      c.field,
+      c.oldValue,
+      c.newValue,
+      'ADMIN',
+      'Perubahan oleh administrator'
+    );
+  });
+
+  logActivity_(
+    old,
+    'EDIT DATA SISWA',
+    changes.map(c => c.field).join(', '),
+    'ADMIN'
+  );
+
+  return { success: true, changed: true };
+}
+
+function addStudent(token, data) {
+  session_(token, 'ADMIN');
+
+  if (!data || !data.NISN || !data.NAMA_SISWA) {
+    throw new Error('NISN dan nama siswa wajib diisi.');
+  }
+
+  if (findStudent_(String(data.NISN))) {
+    throw new Error('NISN sudah terdaftar.');
+  }
+
+  const sh = sheet_(CFG.SHEETS.STUDENTS);
+  const headers = headers_(sh);
+  const obj = {};
+
+  headers.forEach(h => obj[h] = '');
+
+  Object.assign(obj, data);
+
+  obj.ID_SISWA = id_('SIS');
+  obj.STATUS_BIODATA = 'BELUM TERVERIFIKASI';
+  obj.STATUS_SISWA = 'AKTIF';
+  obj.TANGGAL_UPDATE = now_();
+  obj.NISN = String(obj.NISN);
+
+  sh.appendRow(
+    headers.map(h => obj[h] === undefined ? '' : obj[h])
+  );
+
+  logActivity_(
+    obj,
+    'TAMBAH SISWA',
+    'Data siswa baru ditambahkan',
+    'ADMIN'
+  );
+
+  return {
+    success: true,
+    id: obj.ID_SISWA
+  };
+}
+
+
+/* =====================================================
+   STATUS SISWA DAN VERIFIKASI
+   ===================================================== */
+
+function setStudentStatus(token, id, status) {
+  session_(token, 'ADMIN');
+
+  status = String(status).toUpperCase();
+
+  if (!['AKTIF', 'NONAKTIF'].includes(status)) {
+    throw new Error('Status siswa tidak valid.');
+  }
+
+  const found = findStudentById_(id);
+
+  if (!found) {
+    throw new Error('Siswa tidak ditemukan.');
+  }
+
+  updateRow_(
+    sheet_(CFG.SHEETS.STUDENTS),
+    found.row,
+    {
+      STATUS_SISWA: status,
+      TANGGAL_UPDATE: now_()
+    }
+  );
+
+  logActivity_(
+    found.data,
+    'UBAH STATUS SISWA',
+    status,
+    'ADMIN'
+  );
+
+  return { success: true };
+}
+
+function setVerificationStatus(token, id, status) {
+  session_(token, 'ADMIN');
+
+  status = String(status).toUpperCase();
+
+  const allowed = [
+    'TERVERIFIKASI',
+    'BELUM TERVERIFIKASI',
+    'PERLU VERIFIKASI'
+  ];
+
+  if (!allowed.includes(status)) {
+    throw new Error('Status verifikasi tidak valid.');
+  }
+
+  const found = findStudentById_(id);
+
+  if (!found) {
+    throw new Error('Siswa tidak ditemukan.');
+  }
+
+  const stamp = now_();
+
+  updateRow_(
+    sheet_(CFG.SHEETS.STUDENTS),
+    found.row,
+    {
+      STATUS_BIODATA: status,
+      TANGGAL_KONFIRMASI:
+        status === 'TERVERIFIKASI' ? stamp : '',
+      TANGGAL_UPDATE: stamp
+    }
+  );
+
+  logActivity_(
+    found.data,
+    'UBAH STATUS VERIFIKASI',
+    status,
+    'ADMIN'
+  );
+
+  return { success: true };
+}
+
+
+/* =====================================================
+   RIWAYAT KOREKSI DAN LOG
+   ===================================================== */
+
+function appendCorrection_(
+  student,
+  field,
+  oldValue,
+  newValue,
+  source,
+  note
+) {
+  const sh = sheet_(CFG.SHEETS.CORRECTIONS);
+
+  sh.appendRow([
+    id_('KOR'),
+    student.ID_SISWA || '',
+    student.NISN || '',
+    student.NAMA_SISWA || '',
+    '',
+    now_(),
+    field,
+    oldValue,
+    newValue,
+    source,
+    source,
+    note || ''
+  ]);
+}
+
+function logActivity_(student, activity, detail, source) {
+  const sh = sheet_(CFG.SHEETS.LOGS);
+
+  sh.appendRow([
+    id_('LOG'),
+    student ? student.ID_SISWA || '' : '',
+    student ? student.NISN || '' : '',
+    source === 'ADMIN' ? 'Admin' : 'Orang Tua',
+    activity,
+    now_(),
+    detail || '',
+    source
+  ]);
+}
+
+function getCorrectionHistory(token, nisn) {
+  session_(token, 'ADMIN');
+
+  const all = records_(CFG.SHEETS.CORRECTIONS);
+
+  return all.filter(x =>
+    !nisn || String(x.NISN) === String(nisn)
+  );
+}
+
+function getAdminLogs(token) {
+  session_(token, 'ADMIN');
+
+  return records_(CFG.SHEETS.LOGS).reverse();
+}
+
+
+/* =====================================================
+   PENGATURAN
+   ===================================================== */
+
+function getSetting_(key) {
+  const rows = records_(CFG.SHEETS.SETTINGS);
+
+  const item = rows.find(x => x.KEY === key);
+
+  return item ? item.VALUE : '';
+}
+
+function getSettings(token) {
+  session_(token, 'ADMIN');
+
+  return records_(CFG.SHEETS.SETTINGS);
+}
+
+function saveSetting(token, key, value, description) {
+  session_(token, 'ADMIN');
+
+  const sh = sheet_(CFG.SHEETS.SETTINGS);
+  const values = sh.getDataRange().getValues();
+
+  for (let r = 1; r < values.length; r++) {
+    if (String(values[r][0]) === String(key)) {
+      sh.getRange(r + 1, 2).setValue(value);
+
+      if (description !== undefined) {
+        sh.getRange(r + 1, 3).setValue(description);
+      }
+
+      return { success: true };
+    }
+  }
+
+  sh.appendRow([
+    key,
+    value,
+    description || ''
+  ]);
+
+  return { success: true };
+}
+
+
+/* =====================================================
+   BACKUP DAN RESTORE
+   ===================================================== */
+
+function backupFolder_() {
+  const folders = DriveApp.getFoldersByName(
+    CFG.BACKUP_FOLDER
+  );
+
+  return folders.hasNext()
+    ? folders.next()
+    : DriveApp.createFolder(CFG.BACKUP_FOLDER);
+}
+
+function manualBackup(token) {
+  session_(token, 'ADMIN');
+
+  const data = {};
+
+  Object.values(CFG.SHEETS).forEach(name => {
+    data[name] = sheet_(name).getDataRange().getValues();
+  });
+
+  const fileName =
+    'BACKUP_BIODATA_' +
+    Utilities.formatDate(
+      now_(),
+      CFG.TIMEZONE,
+      'yyyyMMdd_HHmmss'
+    ) +
+    '.json';
+
+  const file = backupFolder_().createFile(
+    fileName,
+    JSON.stringify(data, null, 2),
+    MimeType.PLAIN_TEXT
+  );
+
+  logActivity_(
+    null,
+    'BACKUP MANUAL',
+    fileName,
+    'ADMIN'
+  );
+
+  return {
+    success: true,
+    name: fileName,
+    id: file.getId()
+  };
+}
+
+function listBackups(token) {
+  session_(token, 'ADMIN');
+
+  const files = backupFolder_().getFiles();
+  const out = [];
+
+  while (files.hasNext()) {
+    const f = files.next();
+
+    out.push({
+      id: f.getId(),
+      name: f.getName(),
+      date: Utilities.formatDate(
+        f.getDateCreated(),
+        CFG.TIMEZONE,
+        'dd-MM-yyyy HH:mm'
+      )
+    });
+  }
+
+  return out.reverse();
+}
+
+function restoreBackup(token, id) {
+  session_(token, 'ADMIN');
+
+  const file = DriveApp.getFileById(id);
+  const data = JSON.parse(
+    file.getBlob().getDataAsString()
+  );
+
+  Object.keys(data).forEach(name => {
+    if (!Object.values(CFG.SHEETS).includes(name)) {
+      return;
+    }
+
+    const sh = sheet_(name);
+    const rows = data[name];
+
+    sh.clearContents();
+
+    if (rows && rows.length) {
+      sh.getRange(
+        1,
+        1,
+        rows.length,
+        rows[0].length
+      ).setValues(rows);
+    }
+  });
+
+  logActivity_(
+    null,
+    'RESTORE BACKUP',
+    file.getName(),
+    'ADMIN'
+  );
+
+  return { success: true };
+}
+
+
+/* =====================================================
+   EXPORT EXCEL
+   ===================================================== */
+
+function exportStudentsXlsx(token) {
+  session_(token, 'ADMIN');
+
+  const source = sheet_(CFG.SHEETS.STUDENTS);
+  const temp = SpreadsheetApp.create(
+    'EXPORT_BIODATA_' + Date.now()
+  );
+
+  const target = temp.getSheets()[0];
+  target.setName('DATA_SISWA');
+
+  const values = source.getDataRange().getValues();
+
+  if (values.length) {
+    target.getRange(
+      1,
+      1,
+      values.length,
+      values[0].length
+    ).setValues(values);
+  }
+
+  const url =
+    'https://docs.google.com/spreadsheets/d/' +
+    temp.getId() +
+    '/export?format=xlsx';
+
+  const blob = UrlFetchApp.fetch(url, {
+    headers: {
+      Authorization: 'Bearer ' + ScriptApp.getOAuthToken()
+    }
+  }).getBlob().setName(
+    'Data_Siswa_SMP_Bhakti_Pertiwi.xlsx'
+  );
+
+  const file = backupFolder_().createFile(blob);
+
+  DriveApp.getFileById(temp.getId()).setTrashed(true);
+
+  return {
+    success: true,
+    url: file.getDownloadUrl(),
+    name: file.getName()
+  };
+}
+
+
+/* =====================================================
+   DATA UNTUK CETAK
+   ===================================================== */
+
+function getStudentForPrint(token, ids) {
+  session_(token, 'ADMIN');
+
+  const all = records_(CFG.SHEETS.STUDENTS);
+  const wanted = (ids || []).map(String);
+
+  return all.filter(s =>
+    wanted.includes(String(s.ID_SISWA))
+  );
+}
+
+
+/* =====================================================
+   BACKUP MINGGUAN
+   ===================================================== */
+
+function setupWeeklyBackup(token) {
+  session_(token, 'ADMIN');
+
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'scheduledBackup_') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  ScriptApp.newTrigger('scheduledBackup_')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.SUNDAY)
+    .atHour(23)
+    .create();
+
+  return {
+    success: true,
+    message: 'Backup mingguan dijadwalkan setiap Minggu malam.'
+  };
+}
+
+function scheduledBackup_() {
+  const data = {};
+
+  Object.values(CFG.SHEETS).forEach(name => {
+    data[name] = sheet_(name).getDataRange().getValues();
+  });
+
+  const name =
+    'BACKUP_OTOMATIS_' +
+    Utilities.formatDate(
+      now_(),
+      CFG.TIMEZONE,
+      'yyyyMMdd_HHmmss'
+    ) +
+    '.json';
+
+  backupFolder_().createFile(
+    name,
+    JSON.stringify(data),
+    MimeType.PLAIN_TEXT
+  );
+
+  const files = backupFolder_().getFiles();
+  const limit = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+  while (files.hasNext()) {
+    const f = files.next();
+
+    if (
+      f.getName().startsWith('BACKUP_OTOMATIS_') &&
+      f.getDateCreated().getTime() < limit
+    ) {
+      f.setTrashed(true);
+    }
+  }
+}
+
+
+/* =====================================================
+   TEST DATABASE
+   ===================================================== */
+
+function testDatabase() {
+  const ss = db_();
+
+  const result = {
+    spreadsheet: ss.getName(),
+    sheets: ss.getSheets().map(s => s.getName()),
+    students: records_(CFG.SHEETS.STUDENTS).length,
+    adminAccounts: records_(CFG.SHEETS.ADMINS).length
+  };
+
+  Logger.log(JSON.stringify(result, null, 2));
+
+  return result;
+}
